@@ -176,4 +176,4 @@ MIT — see [LICENSE](./LICENSE).
 
 ## AI usage disclosure
 
-Built with AI coding assistance (Claude) for scaffolding, test design, and documentation. Every architectural decision — WAL record format, SSTable layout, bloom filter sizing, compaction strategy, concurrency model — was reviewed and is defensible line-by-line. See [JUDGE_QA.md](./JUDGE_QA.md) for the prepared explanations behind each choice.
+Built with help of AI for scaffolding, test design, and documentation. Every architectural decision — WAL record format, SSTable layout, bloom filter sizing, compaction strategy, concurrency model — was reviewed and is defensible line-by-line. See [JUDGE_QA.md](./JUDGE_QA.md) for the prepared explanations behind each choice.
