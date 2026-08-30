@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>kvlite — interactive demo</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/JetBrains-Mono/2.304/jetbrains-mono.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d0a; --panel:#10140f; --panel2:#141a13; --line:#243024;
+    --text:#d8e3d6; --dim:#7d8f79; --green:#5fe37a; --greend:#2f7a3d;
+    --amber:#e3b341; --red:#e35f5f; --mono:'JetBrains Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--bg); color:var(--text); font-family:var(--mono); height:100%;}
+  ::selection{background:var(--greend); color:#fff;}
+
+  header{padding:24px 4vw 18px 4vw; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;}
+  .title{font-size:26px; font-weight:800; color:#fff;}
+  .title span{color:var(--green);}
+  .subtitle{color:var(--dim); font-size:13px; margin-top:4px; max-width:560px; line-height:1.6;}
+  .live-badge{color:var(--green); font-size:12px; border:1px solid var(--greend); padding:6px 12px; border-radius:4px; display:flex; align-items:center; gap:8px;}
+  .live-badge::before{content:"●"; animation:blink 1.4s infinite;}
+  @keyframes blink{0%,45%{opacity:1;}50%,95%{opacity:.2;}100%{opacity:1;}}
+
+  .layout{display:grid; grid-template-columns:1.3fr 1fr; gap:0; height:calc(100vh - 96px); min-height:640px;}
+  @media (max-width:980px){ .layout{grid-template-columns:1fr; height:auto;} }
+
+  .left{display:flex; flex-direction:column; border-right:1px solid var(--line);}
+  .term-body{
+    flex:1; padding:18px 20px; font-size:13.5px; line-height:1.65; overflow-y:auto;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .prompt{color:var(--green);}
+  .cmd{color:#fff;}
+  .out{color:var(--dim);}
+  .out.ok{color:var(--green);}
+  .out.err{color:var(--red);}
+  .out.warn{color:var(--amber);}
+  .input-row{display:flex; align-items:center; border-top:1px solid var(--line); background:var(--panel2); padding:12px 20px;}
+  .input-row .prompt{margin-right:8px;}
+  #cmd-input{
+    flex:1; background:transparent; border:none; outline:none; color:#fff; font-family:var(--mono); font-size:14px;
+  }
+  .quick-cmds{display:flex; gap:8px; flex-wrap:wrap; padding:12px 20px; border-top:1px solid var(--line); background:var(--panel);}
+  .qbtn{
+    background:transparent; border:1px solid var(--line); color:var(--text); font-family:var(--mono);
+    font-size:11.5px; padding:7px 11px; border-radius:4px; cursor:pointer;
+  }
+  .qbtn:hover{border-color:var(--green); color:var(--green);}
+  .qbtn.danger:hover{border-color:var(--red); color:var(--red);}
+
+  .right{display:flex; flex-direction:column; overflow-y:auto;}
+  .panel{padding:18px 20px; border-bottom:1px solid var(--line);}
+  .panel-title{color:#fff; font-size:12px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;}
+  .panel-title small{color:var(--dim); text-transform:none; letter-spacing:0; font-size:11px;}
+
+  .kv-row{display:flex; gap:10px; font-size:12.5px; padding:4px 0; border-bottom:1px dashed var(--line);}
+  .kv-row:last-child{border-bottom:none;}
+  .kv-key{color:var(--text); min-width:110px; word-break:break-all;}
+  .kv-val{color:var(--green); flex:1; word-break:break-all;}
+  .kv-val.tombstone{color:var(--red); font-style:italic;}
+  .empty-note{color:var(--dim); font-size:12px; font-style:italic;}
+
+  .sstable-card{border:1px solid var(--line); border-radius:5px; padding:10px 12px; margin-bottom:8px; background:var(--panel2);}
+  .sstable-head{display:flex; justify-content:space-between; font-size:11.5px; color:var(--dim); margin-bottom:6px;}
+  .sstable-head b{color:var(--text);}
+  .bloom-mini{display:grid; grid-template-columns:repeat(32,1fr); gap:2px;}
+  .bloom-bit{aspect-ratio:1; background:var(--bg); border-radius:1px;}
+  .bloom-bit.on{background:var(--green);}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .stat-box{background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:10px; text-align:center;}
+  .stat-num{color:var(--green); font-size:20px; font-weight:800;}
+  .stat-lbl{color:var(--dim); font-size:10px; text-transform:uppercase; margin-top:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="title">kvlite <span>— interactive demo</span></div>
+    <div class="subtitle">Type real commands below. This runs an actual working LSM-tree implementation in your browser — same WAL → MemTable → SSTable → Compaction pipeline as the Java submission, reimplemented in JavaScript so judges can drive it live with no install.</div>
+  </div>
+  <div class="live-badge">real engine running client-side</div>
+</header>
+
+<div class="layout">
+  <div class="left">
+    <div class="term-body" id="term"></div>
+    <div class="input-row">
+      <span class="prompt">kvlite&gt;</span>
+      <input type="text" id="cmd-input" placeholder="type a command — try: help" autofocus>
+    </div>
+    <div class="quick-cmds">
+      <button class="qbtn" data-cmd="help">help</button>
+      <button class="qbtn" data-cmd="put user:1 shivam">put user:1 shivam</button>
+      <button class="qbtn" data-cmd="put user:2 priya">put user:2 priya</button>
+      <button class="qbtn" data-cmd="get user:1">get user:1</button>
+      <button class="qbtn" data-cmd="del user:1">del user:1</button>
+      <button class="qbtn" data-cmd="scan a z">scan a z</button>
+      <button class="qbtn" data-cmd="flush">flush</button>
+      <button class="qbtn" data-cmd="compact">compact</button>
+      <button class="qbtn" data-cmd="stats">stats</button>
+      <button class="qbtn danger" data-cmd="crash">simulate crash + reload</button>
+      <button class="qbtn danger" data-cmd="reset">reset store</button>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="panel">
+      <div class="panel-title">MemTable <small>ConcurrentSkipListMap equivalent</small></div>
+      <div id="memtable-view"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">SSTables on disk <small>write-to-temp-then-rename, newest first</small></div>
+      <div id="sstable-view"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Write-Ahead Log <small>persisted — survives the "crash" button</small></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-num" id="wal-count">0</div><div class="stat-lbl">records</div></div>
+        <div class="stat-box"><div class="stat-num" id="wal-bytes">0</div><div class="stat-lbl">bytes (est.)</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Engine stats</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-num" id="stat-keys">0</div><div class="stat-lbl">live keys</div></div>
+        <div class="stat-box"><div class="stat-num" id="stat-sstables">0</div><div class="stat-lbl">sstables</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/*
+ * REAL, WORKING re-implementation of the kvlite engine, in JavaScript,
+ * for browser demo purposes. Same architecture as the Java submission:
+ *   - WAL: append-only record log, persisted to localStorage (survives
+ *     the "crash" button, which does a real page reload)
+ *   - MemTable: in-memory sorted map (JS Map, kept sorted on read)
+ *   - SSTable: immutable, "flushed" from the memtable, each with its
+ *     own bloom filter (same Kirsch-Mitzenmacher double-hashing as
+ *     BloomFilter.java) and stored as JSON in localStorage
+ *   - Compaction: merges all SSTables, keeps newest version per key,
+ *     drops tombstones
+ *
+ * This is NOT literally invoking the Java binary — it's a from-scratch,
+ * functionally faithful port so judges can interact with the real
+ * design live in a browser with zero install. Said explicitly here so
+ * nobody mistakes this for the Java process itself.
+ */
+
+const LS_WAL = 'kvlite_demo_wal';
+const LS_SSTABLES = 'kvlite_demo_sstables';
+const LS_SEQ = 'kvlite_demo_seq';
+const FLUSH_THRESHOLD = 6; // small on purpose, so judges can trigger a flush in a few commands
+
+let memtable = new Map(); // key -> {value, tombstone}
+
+function loadWAL(){ return JSON.parse(localStorage.getItem(LS_WAL) || '[]'); }
+function saveWAL(w){ localStorage.setItem(LS_WAL, JSON.stringify(w)); }
+function loadSSTables(){ return JSON.parse(localStorage.getItem(LS_SSTABLES) || '[]'); }
+function saveSSTables(t){ localStorage.setItem(LS_SSTABLES, JSON.stringify(t)); }
+function nextSeq(){ const s = parseInt(localStorage.getItem(LS_SEQ) || '0'); localStorage.setItem(LS_SEQ, s+1); return s; }
+
+// ---- Bloom filter: real port of BloomFilter.java's hashing ----
+function hash1(key){ let h=0; for(let i=0;i<key.length;i++){ h=(h*31+key.charCodeAt(i))|0; } return Math.abs(h); }
+function hash2(key){ let h=0xcbf29ce4; for(let i=0;i<key.length;i++){ h^=key.charCodeAt(i); h=Math.imul(h,0x1000193);} return Math.abs(h); }
+function bloomPositions(key, m, k){
+  const h1=hash1(key), h2=hash2(key), pos=[];
+  for(let i=0;i<k;i++) pos.push(((h1+i*h2)%m+m)%m);
+  return pos;
+}
+function buildBloom(keys){
+  const m = 256, k = 3;
+  const bits = new Uint8Array(m);
+  keys.forEach(key => bloomPositions(key, m, k).forEach(p => bits[p]=1));
+  return { m, k, bits: Array.from(bits) };
+}
+function bloomMightContain(bloom, key){
+  return bloomPositions(key, bloom.m, bloom.k).every(p => bloom.bits[p]===1);
+}
+
+// ---- WAL replay on "startup" (page load) ----
+function replayWAL(){
+  memtable = new Map();
+  const wal = loadWAL();
+  for(const rec of wal){
+    if(rec.op === 'PUT') memtable.set(rec.key, {value: rec.value, tombstone:false});
+    else memtable.set(rec.key, {value:null, tombstone:true});
+  }
+}
+
+function walAppend(op, key, value){
+  const wal = loadWAL();
+  wal.push({op, key, value: value ?? null, ts: Date.now()});
+  saveWAL(wal);
+}
+
+function walTruncate(){ saveWAL([]); }
+
+// ---- Engine operations ----
+function engineGet(key){
+  if(memtable.has(key)){
+    const e = memtable.get(key);
+    return e.tombstone ? {found:true, tombstone:true} : {found:true, value:e.value};
+  }
+  const tables = loadSSTables(); // newest first (index 0)
+  for(const t of tables){
+    if(!bloomMightContain(t.bloom, key)) continue;
+    if(Object.prototype.hasOwnProperty.call(t.entries, key)){
+      const e = t.entries[key];
+      return e.tombstone ? {found:true, tombstone:true} : {found:true, value:e.value};
+    }
+  }
+  return {found:false};
+}
+
+function enginePut(key, value){
+  walAppend('PUT', key, value);
+  memtable.set(key, {value, tombstone:false});
+  maybeFlush();
+}
+
+function engineDelete(key){
+  walAppend('DEL', key, null);
+  memtable.set(key, {value:null, tombstone:true});
+  maybeFlush();
+}
+
+function maybeFlush(auto=true){
+  if(auto && memtable.size < FLUSH_THRESHOLD) return false;
+  if(memtable.size === 0) return false;
+  const entries = {};
+  const keys = [];
+  for(const [k,v] of memtable.entries()){ entries[k]=v; keys.push(k); }
+  const bloom = buildBloom(keys);
+  const table = { id: nextSeq(), entries, bloom, count: keys.length, createdAt: Date.now() };
+  const tables = loadSSTables();
+  tables.unshift(table); // newest first
+  saveSSTables(tables);
+  memtable = new Map();
+  walTruncate();
+  return true;
+}
+
+function engineCompact(){
+  const tables = loadSSTables();
+  if(tables.length < 2) return {merged:0, before:tables.length};
+  const merged = {}; // oldest -> newest overwrite order
+  for(let i=tables.length-1;i>=0;i--){
+    for(const [k,v] of Object.entries(tables[i].entries)) merged[k]=v;
+  }
+  const survivors = {};
+  for(const [k,v] of Object.entries(merged)){ if(!v.tombstone) survivors[k]=v; }
+  const keys = Object.keys(survivors);
+  const bloom = buildBloom(keys);
+  const newTable = { id: nextSeq(), entries: survivors, bloom, count: keys.length, createdAt: Date.now() };
+  saveSSTables([newTable]);
+  return {merged: tables.length, before: tables.length, after:1};
+}
+
+function engineScan(from, to){
+  const results = new Map();
+  const tables = loadSSTables();
+  for(let i=tables.length-1;i>=0;i--){
+    for(const [k,v] of Object.entries(tables[i].entries)){
+      if(k>=from && k<=to){ if(v.tombstone) results.delete(k); else results.set(k, v.value); }
+    }
+  }
+  for(const [k,v] of memtable.entries()){
+    if(k>=from && k<=to){ if(v.tombstone) results.delete(k); else results.set(k, v.value); }
+  }
+  return new Map([...results.entries()].sort());
+}
+
+function engineReset(){
+  localStorage.removeItem(LS_WAL);
+  localStorage.removeItem(LS_SSTABLES);
+  localStorage.removeItem(LS_SEQ);
+  memtable = new Map();
+}
+
+// ---- Terminal UI ----
+const term = document.getElementById('term');
+function printLine(html){ const d=document.createElement('div'); d.innerHTML=html; term.appendChild(d); term.scrollTop=term.scrollHeight; }
+function printPrompt(cmd){ printLine(`<span class="prompt">kvlite&gt;</span> <span class="cmd">${escapeHtml(cmd)}</span>`); }
+function printOut(text, cls=''){ printLine(`<span class="out ${cls}">${escapeHtml(text)}</span>`); }
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function runCommand(raw){
+  const line = raw.trim();
+  if(!line) return;
+  printPrompt(line);
+  const parts = line.split(' ').filter(Boolean);
+  const cmd = parts[0];
+
+  try{
+    switch(cmd){
+      case 'help':
+        printOut('commands:');
+        printOut('  put <key> <value>     write a key');
+        printOut('  get <key>             read a key');
+        printOut('  del <key>             delete a key (tombstone)');
+        printOut('  scan <from> <to>      range scan (inclusive)');
+        printOut('  flush                 force-flush the memtable to a new SSTable');
+        printOut('  compact               merge all SSTables into one');
+        printOut('  stats                 show engine stats');
+        printOut('  crash                 reload the page — WAL replay proves recovery');
+        printOut('  reset                 wipe all demo data');
+        break;
+      case 'put': {
+        const key = parts[1]; const value = parts.slice(2).join(' ');
+        if(!key || !value){ printOut('usage: put <key> <value>', 'err'); break; }
+        enginePut(key, value);
+        printOut('OK', 'ok');
+        break;
+      }
+      case 'get': {
+        const key = parts[1];
+        if(!key){ printOut('usage: get <key>', 'err'); break; }
+        const r = engineGet(key);
+        if(!r.found || r.tombstone) printOut('(not found)', 'warn');
+        else printOut(r.value);
+        break;
+      }
+      case 'del': {
+        const key = parts[1];
+        if(!key){ printOut('usage: del <key>', 'err'); break; }
+        engineDelete(key);
+        printOut('OK', 'ok');
+        break;
+      }
+      case 'scan': {
+        const from = parts[1], to = parts[2];
+        if(!from || !to){ printOut('usage: scan <from> <to>', 'err'); break; }
+        const results = engineScan(from, to);
+        if(results.size===0) printOut('(no keys in range)', 'warn');
+        else for(const [k,v] of results) printOut(`${k} = ${v}`);
+        break;
+      }
+      case 'flush': {
+        const did = maybeFlush(false);
+        printOut(did ? 'flushed memtable to a new SSTable' : 'nothing to flush — memtable is empty', did?'ok':'warn');
+        break;
+      }
+      case 'compact': {
+        const r = engineCompact();
+        if(r.before < 2) printOut('need at least 2 SSTables to compact — try flushing more first', 'warn');
+        else printOut(`compacted ${r.before} SSTables into 1`, 'ok');
+        break;
+      }
+      case 'stats': {
+        const tables = loadSSTables();
+        const wal = loadWAL();
+        printOut(`memtable size: ${memtable.size} entries`);
+        printOut(`sstables on disk: ${tables.length}`);
+        printOut(`wal records (unflushed): ${wal.length}`);
+        break;
+      }
+      case 'crash': {
+        printOut('simulating an abrupt crash — the WAL is already persisted, so reloading now proves recovery...', 'warn');
+        setTimeout(()=>{ window.location.reload(); }, 900);
+        break;
+      }
+      case 'reset': {
+        engineReset();
+        printOut('demo store wiped clean', 'ok');
+        render();
+        break;
+      }
+      default:
+        printOut(`unknown command: ${cmd} — type "help"`, 'err');
+    }
+  } catch(e){
+    printOut('error: ' + e.message, 'err');
+  }
+  render();
+}
+
+// ---- Live side-panel rendering ----
+function render(){
+  // memtable
+  const mtView = document.getElementById('memtable-view');
+  mtView.innerHTML = '';
+  if(memtable.size===0){ mtView.innerHTML = '<div class="empty-note">empty — writes land here first</div>'; }
+  else {
+    for(const [k,v] of [...memtable.entries()].sort()){
+      const row = document.createElement('div'); row.className='kv-row';
+      row.innerHTML = `<span class="kv-key">${escapeHtml(k)}</span><span class="kv-val ${v.tombstone?'tombstone':''}">${v.tombstone?'⊘ tombstone':escapeHtml(v.value)}</span>`;
+      mtView.appendChild(row);
+    }
+  }
+
+  // sstables
+  const tables = loadSSTables();
+  const ssView = document.getElementById('sstable-view');
+  ssView.innerHTML = '';
+  if(tables.length===0){ ssView.innerHTML = '<div class="empty-note">none yet — run "flush" or write ' + FLUSH_THRESHOLD + '+ keys to auto-flush</div>'; }
+  else {
+    tables.forEach((t, i) => {
+      const card = document.createElement('div'); card.className='sstable-card';
+      const bitsHtml = t.bloom.bits.slice(0,96).map(b=>`<div class="bloom-bit ${b?'on':''}"></div>`).join('');
+      card.innerHTML = `<div class="sstable-head"><b>sstable-${t.id}.dat</b><span>${i===0?'newest · ':''}${t.count} keys</span></div><div class="bloom-mini">${bitsHtml}</div>`;
+      ssView.appendChild(card);
+    });
+  }
+
+  // wal
+  const wal = loadWAL();
+  document.getElementById('wal-count').textContent = wal.length;
+  document.getElementById('wal-bytes').textContent = JSON.stringify(wal).length;
+
+  // engine stats
+  const liveKeys = new Set();
+  for(const t of [...tables].reverse()) for(const [k,v] of Object.entries(t.entries)){ if(v.tombstone) liveKeys.delete(k); else liveKeys.add(k); }
+  for(const [k,v] of memtable.entries()){ if(v.tombstone) liveKeys.delete(k); else liveKeys.add(k); }
+  document.getElementById('stat-keys').textContent = liveKeys.size;
+  document.getElementById('stat-sstables').textContent = tables.length;
+}
+
+// ---- Boot ----
+replayWAL();
+const wasFreshLoad = loadWAL().length > 0 || loadSSTables().length > 0;
+printOut('kvlite interactive demo — real WAL + MemTable + SSTable + Compaction, running in your browser.');
+printOut('type "help" to see commands, or click a button below.');
+if(wasFreshLoad){
+  printOut(`(recovered ${loadWAL().length} WAL record(s) and ${loadSSTables().length} SSTable(s) from a previous session — this is the same replay-on-startup logic as the real engine)`, 'ok');
+}
+render();
+
+document.getElementById('cmd-input').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){
+    const v = e.target.value;
+    e.target.value='';
+    runCommand(v);
+  }
+});
+document.querySelectorAll('.qbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=> runCommand(btn.dataset.cmd));
+});
+</script>
+</body>
+</html>
