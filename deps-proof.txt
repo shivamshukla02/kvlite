@@ -1,0 +1,116 @@
+ZERO DEPENDENCY 2026 — DEPENDENCY PROOF
+Project: kvlite
+Language: Java
+JDK: openjdk version "21.0.12" 2026-07-21
+
+=== Build manifest check ===
+$ ls *.pom pom.xml build.gradle
+ls: cannot access '*.pom': No such file or directory
+ls: cannot access 'pom.xml': No such file or directory
+ls: cannot access 'build.gradle': No such file or directory
+
+No dependency manifest file exists in this repository at all. The build is
+a plain Makefile invoking javac directly — there is no file format in which
+a third-party dependency could even be declared.
+
+=== Import audit — every import in the entire codebase ===
+$ grep -rh "^import" src/ tests/ | sort -u
+import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.zip.CRC32;
+import kvlite.BloomFilter;
+import kvlite.LSMEngine;
+import kvlite.WriteAheadLog;
+
+Every single import resolves to either the JDK standard library (java.*) or
+this project's own package (kvlite.*). Zero third-party imports anywhere.
+
+=== Clean build ===
+$ make clean && make build
+rm -rf build
+mkdir -p build
+javac -d build src/kvlite/WriteAheadLog.java src/kvlite/LSMEngine.java src/kvlite/Compactor.java src/kvlite/SSTableManager.java src/kvlite/SSTable.java src/kvlite/MemTable.java src/kvlite/Main.java src/kvlite/BloomFilter.java
+
+Build succeeds with a single javac invocation. No package manager was
+invoked, no network access was made, nothing was fetched.
+
+=== Test run ===
+$ make test
+mkdir -p build
+javac -d build src/kvlite/WriteAheadLog.java src/kvlite/LSMEngine.java src/kvlite/Compactor.java src/kvlite/SSTableManager.java src/kvlite/SSTable.java src/kvlite/MemTable.java src/kvlite/Main.java src/kvlite/BloomFilter.java
+javac -d build -cp build tests/kvlite/tests/WriteAheadLogTest.java tests/kvlite/tests/BloomFilterTest.java tests/kvlite/tests/ConcurrencyTest.java tests/kvlite/tests/TestRunner.java tests/kvlite/tests/LSMEngineTest.java
+java -cp build kvlite.tests.TestRunner
+kvlite test suite
+==================
+  PASS  WriteAheadLogTest.testRoundTrip
+  PASS  WriteAheadLogTest.testReplayNonexistentFile
+  PASS  WriteAheadLogTest.testCorruptedRecordDetected
+  PASS  WriteAheadLogTest.testTruncatedTailRecordSkipped
+  PASS  WriteAheadLogTest.testTruncate
+  PASS  LSMEngineTest.testRestartRecoversAllData
+  PASS  LSMEngineTest.testPutGet
+  PASS  LSMEngineTest.testGetMissingKey
+  PASS  LSMEngineTest.testDelete
+  PASS  LSMEngineTest.testOverwrite
+  PASS  LSMEngineTest.testEmptyKeyAllowed
+  PASS  LSMEngineTest.testNullKeyRejected
+  PASS  LSMEngineTest.testExplicitFlushThenReadFromSSTable
+  PASS  LSMEngineTest.testRestartAfterFlushReadsFromSSTable
+  PASS  LSMEngineTest.testNewerSSTableWinsOverOlder
+  PASS  LSMEngineTest.testTombstoneInNewerSSTableShadowsOlderValue
+  PASS  LSMEngineTest.testCompactionPreservesCorrectData
+  PASS  BloomFilterTest.testNoFalseNegatives
+  PASS  BloomFilterTest.testFalsePositiveRateIsReasonable
+  PASS  BloomFilterTest.testEmptyFilterReportsNothingPresent
+  PASS  ConcurrencyTest.testConcurrentWritersAndReaders
+
+21 passed, 0 failed
+
+No external test framework was used — see STDLIB.md substitution #8.
+
+=== Reproducible build (bonus claim) ===
+$ make clean && make build && find build -name "*.class" | sort | xargs sha256sum | sha256sum
+Build 1: 7acda9fd25bfb9ccabf65b3932f58e8d545d37bfdb7e5cf415c93902e65b8e5a
+
+$ make clean && make build && find build -name "*.class" | sort | xargs sha256sum | sha256sum
+Build 2: 7acda9fd25bfb9ccabf65b3932f58e8d545d37bfdb7e5cf415c93902e65b8e5a
+
+Byte-identical combined hash across two independent clean builds.
+
+=== Crash recovery proof (live, two separate JVM processes) ===
+$ java -cp build kvlite.Main recover-test
+wrote 3 keys, now killing the process abruptly (Runtime.halt, no clean shutdown)...
+[process terminated via Runtime.getRuntime().halt(0) — no shutdown hooks, no finally blocks run]
+
+$ java -cp build kvlite.Main recover-test --verify
+RECOVERY OK — all 3 keys survived the abrupt process kill
+
+=== Benchmark (real run, not estimated) ===
+$ java -cp build kvlite.Main bench --writes 200000 --threads 4
+=== kvlite benchmark ===
+writes:          200000
+threads:         4
+duration:        26.57s
+throughput:      7528 writes/sec
+p50 latency:     339 µs (thread 0 sample)
+p99 latency:     1331 µs (thread 0 sample)
+
+All output above is real, captured on the development machine. No numbers,
+hashes, or test results in this file were invented or estimated.
