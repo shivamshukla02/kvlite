@@ -1,7 +1,4 @@
-# Judge Q&A Prep
-
-Answers below are frameworks — fill in real numbers/specifics once the implementation is done.
-
+Especially For Judges From my Side
 ## Architecture
 1. **Why an LSM-tree instead of a simpler B-tree/hashmap-on-disk?** LSM trees turn random writes into sequential ones (append to WAL/memtable, flush sequentially), which is the standard tradeoff for write-heavy workloads — and it's a well-understood architecture to explain and defend.
 2. **Why ConcurrentSkipListMap for the memtable?** Lock-free, sorted, JDK-native — gives ordered iteration for flush without a separate sort step.
